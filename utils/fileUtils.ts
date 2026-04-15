@@ -124,11 +124,15 @@ export const resizeBase64Image = (base64: string, mimeType: string, maxDimension
                 return;
             }
 
+            console.log(`Resizing image to max ${maxDimension}px...`);
             ctx.imageSmoothingEnabled = true;
             ctx.imageSmoothingQuality = 'high';
             ctx.drawImage(img, 0, 0, width, height);
             
-            const dataUrl = canvas.toDataURL(mimeType, 0.85);
+            // Ensure we use a standard MIME type for output
+            const outputType = mimeType === 'image/png' ? 'image/png' : 'image/jpeg';
+            const dataUrl = canvas.toDataURL(outputType, 0.85);
+            console.log("Resize complete.");
             resolve(dataUrl.split(',')[1]);
         };
         img.onerror = reject;
@@ -221,7 +225,9 @@ export const smartCropImageToBase64 = (
             ctx.imageSmoothingQuality = 'high';
             ctx.drawImage(img, sourceX, sourceY, cropWidth, cropHeight, 0, 0, targetWidth, targetHeight);
             
-            const dataUrl = canvas.toDataURL(mimeType, 0.95);
+            // Ensure we use a standard MIME type for output
+            const outputType = mimeType === 'image/png' ? 'image/png' : 'image/jpeg';
+            const dataUrl = canvas.toDataURL(outputType, 0.95);
             resolve(dataUrl.split(',')[1]);
         };
         img.onerror = reject;

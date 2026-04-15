@@ -57,6 +57,7 @@ export const editImageWithPrompt = async (
   }
 
   console.log(`AI Edit: Starting with model ${effectiveModel} (Speed Optimized)`);
+  console.log(`API Key check: ${apiKey ? (apiKey.substring(0, 5) + '...') : 'MISSING'}`);
   
   let retries = 2;
   const currentPrompt = prompt;
@@ -67,7 +68,8 @@ export const editImageWithPrompt = async (
         attemptedModels.add(effectiveModel);
         
         // Increase resolution to 2048px for high-quality output suitable for printing
-        const maxDim = effectiveModel.includes('3.1') ? 3072 : 2048;
+        // Use 1536px for standard flash to improve speed and reliability on browser
+        const maxDim = effectiveModel.includes('3.1') ? 3072 : 1536;
         const optimizedImageBase64 = await resizeBase64Image(image.base64, image.mimeType, maxDim);
         
         const parts: any[] = [
@@ -92,12 +94,14 @@ export const editImageWithPrompt = async (
         parts.push({ text: currentPrompt });
 
         // Add a timeout to prevent hanging forever
+        console.log(`Sending request to Gemini (${effectiveModel})...`);
         const responsePromise = ai.models.generateContent({
           model: effectiveModel,
           contents: { parts: parts },
           config: {
             responseModalities: [Modality.IMAGE],
-            thinkingConfig: effectiveModel.includes('gemini-3') ? { thinkingLevel: ThinkingLevel.LOW } : undefined,
+            // Temporarily remove thinkingConfig to see if it improves compatibility
+            // thinkingConfig: effectiveModel.includes('gemini-3') ? { thinkingLevel: ThinkingLevel.LOW } : undefined,
             safetySettings: [
               { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE },
               { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE },
@@ -108,10 +112,17 @@ export const editImageWithPrompt = async (
         });
 
         const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error("Yêu cầu quá thời gian (Timeout). Vui lòng thử lại hoặc kiểm tra kết nối mạng.")), 60000)
+            setTimeout(() => reject(new Error("Yêu cầu quá thời gian (60s). Vui lòng thử lại hoặc kiểm tra kết nối mạng.")), 60000)
         );
 
-        const response = await Promise.race([responsePromise, timeoutPromise]) as any;
+        let response;
+        try {
+            response = await Promise.race([responsePromise, timeoutPromise]) as any;
+            console.log("Response received from Gemini.");
+        } catch (raceErr: any) {
+            console.error("Gemini API call failed or timed out:", raceErr);
+            throw raceErr;
+        }
 
         if (response.promptFeedback?.blockReason) {
           throw new Error(`Yêu cầu bị chặn do chính sách an toàn: ${response.promptFeedback.blockReason}. Hãy thử thay đổi ảnh hoặc yêu cầu.`);
@@ -131,6 +142,7 @@ export const editImageWithPrompt = async (
 
         for (const part of candidate.content.parts) {
           if (part.inlineData?.data) {
+            console.log("Image data found in response.");
             return part.inlineData.data;
           }
         }
@@ -173,7 +185,7 @@ export const editImageWithPrompt = async (
 
         let userMsg = "Lỗi khi tạo ảnh.";
         if (isQuotaError) {
-            userMsg = "Hết lượt sử dụng (Quota exceeded). Vui lòng nhấn nút 'Cài đặt Key cá nhân' bên dưới để nhập Key của riêng bạn và tiếp tục sử dụng miễn phí không giới hạn.";
+            userMsg = "Hết lượt sử dụng (Quota exceeded): API Key miễn phí của bạn đã đạt giới hạn số lượng ảnh có thể tạo trong 1 phút hoặc 1 ngày. Vui lòng đợi 1-2 phút rồi thử lại, hoặc nâng cấp lên gói trả phí của Google.";
         } else if (isPermissionError) {
             userMsg = "Lỗi quyền truy cập (403): API Key của bạn không có quyền sử dụng tính năng này. Hãy đảm bảo bạn đã bật 'Generative Language API' trong Google AI Studio và Key không bị giới hạn vùng địa lý.";
         } else if (isInternalError) {

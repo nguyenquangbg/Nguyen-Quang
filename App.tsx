@@ -1632,14 +1632,27 @@ const App: React.FC = () => {
     setError(null);
     setEditedImage(null);
 
+    let isStillLoading = true;
+    const generationTimeout = setTimeout(() => {
+        if (isStillLoading) {
+            setIsLoading(false);
+            setError("Quá trình xử lý mất quá nhiều thời gian (90s). Có thể do API Key của bạn đang bị giới hạn hoặc kết nối mạng chậm. Vui lòng thử lại sau vài phút.");
+        }
+    }, 90000); // 90 second global timeout
+
     try {
+        console.log("Starting image generation process...");
         if (!originalImage) {
+            isStillLoading = false;
+            clearTimeout(generationTimeout);
             throw new Error('Vui lòng tải ảnh lên trước.');
         }
 
         // Optimize: Ensure image is not unnecessarily large for the AI editor (max 1536px)
         // This speeds up upload and processing time significantly
+        console.log("Optimizing image for AI editor...");
         const optimizedBase64 = await resizeBase64Image(originalImage.base64, originalImage.mimeType, 1536);
+        console.log("Image optimization complete.");
         const optimizedImage = { ...originalImage, base64: optimizedBase64 };
 
         if (mode === 'id' && !idOptions.clothing && !idOptions.clothingCustomization?.trim() && !idOptions.background?.trim() && idOptions.smoothSkin === 'none' && !customPrompt?.trim() && !idOptions.hair?.trim() && !idOptions.hairStyle && !idOptions.accessories?.trim() && idOptions.adjustLighting === 'none' && idOptions.increaseContrast === 'none' && idOptions.increaseSharpness === 'none' && idOptions.colorTemperature === 'normal' && idOptions.whiteBalance === 'neutral' && !advancedTech.hdr && advancedTech.microDetails === 'off' && !advancedTech.smartLight && idOptions.faceEnhancement === 'default' && idOptions.resolutionBoost === 'none' && !idOptions.facialRetouching?.brightenEyes && !idOptions.facialRetouching?.evenEyeSkin && !idOptions.facialRetouching?.smoothFineLines && !idOptions.facialRetouching?.lightMakeup && !idOptions.facialRetouching?.acneRemoval && !idOptions.facialRetouching?.teethWhitening && idOptions.skinTone === 'default' && idOptions.poreVisibility === 'natural' && idOptions.skinTexture === 'medium') {
@@ -1675,7 +1688,12 @@ const App: React.FC = () => {
             setRestoreHistory(prev => [{ rawOriginal: rawOriginalImage, original: originalImage, edited: newEditedImageSrc }, ...prev].slice(0, 12));
         }
         
+        isStillLoading = false;
+        clearTimeout(generationTimeout);
     } catch (e) {
+      console.error("Submission Error Details:", e);
+      isStillLoading = false;
+      clearTimeout(generationTimeout);
       if (e instanceof Error) { setError(e.message); } 
       else { setError('Một lỗi không mong muốn đã xảy ra.'); }
     } finally {
