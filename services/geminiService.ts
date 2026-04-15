@@ -7,7 +7,20 @@ const getApiKey = () => {
     const customKey = localStorage.getItem('custom_gemini_api_key');
     if (customKey && customKey.trim().length > 10) return customKey.trim();
   }
-  return process.env.GEMINI_API_KEY || process.env.API_KEY || '';
+  
+  // Try various ways to get the key (platform specific)
+  try {
+    if (typeof process !== 'undefined' && process.env) {
+      if (process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY;
+      if (process.env.API_KEY) return process.env.API_KEY;
+    }
+  } catch (e) {}
+
+  // Vite fallback
+  const viteKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
+  if (viteKey) return viteKey;
+
+  return '';
 };
 
 export const editImageWithPrompt = async (
@@ -17,7 +30,12 @@ export const editImageWithPrompt = async (
   backgroundImage?: ImageFile | null
 ): Promise<string> => {
   const apiKey = getApiKey();
+  const isGitHub = typeof window !== 'undefined' && window.location.hostname.includes('github.io');
+
   if (!apiKey) {
+      if (isGitHub) {
+          throw new Error("Bạn đang chạy ứng dụng trên GitHub. Vì lý do bảo mật, API Key không được tự động chuyển sang GitHub. Vui lòng nhấn nút 'Cài đặt Key cá nhân' ở cuối trang để nhập Key Gemini của bạn.");
+      }
       throw new Error("Không tìm thấy API Key. Vui lòng kiểm tra cấu hình.");
   }
 
@@ -73,7 +91,8 @@ export const editImageWithPrompt = async (
 
         parts.push({ text: currentPrompt });
 
-        const response = await ai.models.generateContent({
+        // Add a timeout to prevent hanging forever
+        const responsePromise = ai.models.generateContent({
           model: effectiveModel,
           contents: { parts: parts },
           config: {
@@ -87,6 +106,12 @@ export const editImageWithPrompt = async (
             ],
           },
         });
+
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error("Yêu cầu quá thời gian (Timeout). Vui lòng thử lại hoặc kiểm tra kết nối mạng.")), 60000)
+        );
+
+        const response = await Promise.race([responsePromise, timeoutPromise]) as any;
 
         if (response.promptFeedback?.blockReason) {
           throw new Error(`Yêu cầu bị chặn do chính sách an toàn: ${response.promptFeedback.blockReason}. Hãy thử thay đổi ảnh hoặc yêu cầu.`);
@@ -203,6 +228,23 @@ export const refinePrompt = async (text: string, mode: 'id' | 'restore'): Promis
 
 export const analyzeImageAttributes = async (image: ImageFile): Promise<IdAnalysisResult> => {
     const apiKey = getApiKey();
+    const isGitHub = typeof window !== 'undefined' && window.location.hostname.includes('github.io');
+
+    if (!apiKey && isGitHub) {
+        return {
+            gender: "Không xác định", ageRange: "--",
+            skinCondition: "Thiếu API Key",
+            clothingStyle: "Thiếu API Key",
+            hairStyle: "Thiếu API Key",
+            background: { isClean: true, color: "Unknown", description: "Vui lòng cài đặt API Key cá nhân" },
+            lighting: { isEven: true, description: "---" },
+            face: { isStraight: true, isClear: true, isSymmetric: true, description: "Bạn đang chạy trên GitHub. Vui lòng nhập API Key cá nhân ở cuối trang." },
+            quality: { isSharp: true, hasNoise: false, description: "---" },
+            overallPass: true,
+            recommendations: "Nhấn 'Cài đặt Key cá nhân' để nhập mã API của bạn."
+        };
+    }
+
     const ai = new GoogleGenAI({ apiKey });
     
     let effectiveModel = 'gemini-3.1-flash-lite-preview';
@@ -213,7 +255,7 @@ export const analyzeImageAttributes = async (image: ImageFile): Promise<IdAnalys
             // Optimize: Resize image to 384px for even faster analysis and lower quota usage
             const optimizedBase64 = await resizeBase64Image(image.base64, image.mimeType, 384);
 
-            const response = await ai.models.generateContent({
+            const responsePromise = ai.models.generateContent({
                 model: effectiveModel,
                 contents: {
                     parts: [
@@ -280,6 +322,12 @@ export const analyzeImageAttributes = async (image: ImageFile): Promise<IdAnalys
                     }
                 }
             });
+
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error("Phân tích quá thời gian.")), 30000)
+            );
+
+            const response = await Promise.race([responsePromise, timeoutPromise]) as any;
 
             const text = response.text;
             if (!text) throw new Error("No response text");

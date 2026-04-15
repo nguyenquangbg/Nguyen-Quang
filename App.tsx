@@ -2652,7 +2652,7 @@ const App: React.FC = () => {
           <div className="flex-1">
               <p className="font-bold">Lỗi</p>
               <p className="text-sm opacity-90">{error}</p>
-              {(error.includes('Quota exceeded') || error.includes('403')) && (
+              {(error.includes('Quota exceeded') || error.includes('403') || error.includes('API Key') || error.includes('GitHub')) && (
                   <button 
                     onClick={() => { setShowApiKeyModal(true); setError(null); }}
                     className="mt-2 px-3 py-1 bg-white text-red-600 text-xs font-bold rounded-md hover:bg-gray-100 transition-colors"
